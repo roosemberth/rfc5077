@@ -32,7 +32,7 @@
 /* Display usage for clients and exit */
 static void
 usage(char * const name) {
-  fail("Usage: %s [-r] [-d {secs}] [-S] [-T] [-C {client_cert}] [-K {client_key} host port\n"
+  fail("Usage: %s [-r] [-d {secs}] [-S] [-T] [-C {client_cert}] [-K {client_key}] [-H \"Header\"] [-B \"Body\"] host port\n"
        "\n"
        " Connect to an SSL HTTP server and requests `/'\n"
        "\n"
@@ -43,18 +43,21 @@ usage(char * const name) {
        "\t-T: disable support for tickets\n"
        "\t-C: use a client certificate for the connection and this specifies a certificate as a file in PEM format. Optionally the key can be here too\n"
        "\t-K: use the key {client_key}, a PEM formated key file, in the connection\n"
+       "\t-R: send custom request. Printf format string, will be directly passed to the server"
        , name);
 }
 
 /* Parse arguments and call back connect function */
 int client(int argc, char * const argv[],
 	   int (*connect)(char *, char *, int, int, int, int,
-                    const char *, const char *)) {
+                    const char *, const char *, const char *, const char *)) {
   int   opt, status;
   int   reconnect     = 0;
   int   use_sessionid = 1;
   int   use_ticket    = 1;
   int   delay         = 0;
+  char *customHeader = NULL;
+  char *customBody = NULL;
   char *host          = NULL;
   char *port          = NULL;
   const char *client_cert   = NULL;
@@ -63,7 +66,7 @@ int client(int argc, char * const argv[],
   /* Parse arguments */
   opterr = 0;
   start("Parse arguments");
-  while ((opt = getopt(argc, argv, "rd:STC:K:")) != -1) {
+  while ((opt = getopt(argc, argv, "rd:STC:K:H:B:")) != -1) {
     switch (opt) {
     case 'r':
       reconnect++;
@@ -83,6 +86,12 @@ int client(int argc, char * const argv[],
     case 'K':
       client_key = optarg;
       break;
+    case 'H':
+    	customHeader=optarg;
+    	break;
+    case 'B':
+    	customBody=optarg;
+    	break;
     default:
       usage(argv[0]);
     }
@@ -100,7 +109,7 @@ int client(int argc, char * const argv[],
   port = argv[optind + 1];
 
   /* Callback */
-  status = connect(host, port, reconnect, use_sessionid, use_ticket, delay, client_cert, client_key);
+  status = connect(host, port, reconnect, use_sessionid, use_ticket, delay, client_cert, client_key, customHeader, customBody);
   end(NULL);
   return status;
 }
