@@ -32,7 +32,7 @@
 /* Display usage for clients and exit */
 static void
 usage(char * const name) {
-  fail("Usage: %s [-r] [-d {secs}] [-S] [-T] [-C {client_cert}] [-K {client_key}] [-H \"Header\"] [-B \"Body\"] host port\n"
+  fail("Usage: %s [-r] [-d {secs}] [-S] [-T] [-C {client_cert}] [-K {client_key}] [-H \"Header\"] [-B \"Body\"] [-F /path/to/file] host port\n"
        "\n"
        " Connect to an SSL HTTP server and requests `/'\n"
        "\n"
@@ -43,14 +43,17 @@ usage(char * const name) {
        "\t-T: disable support for tickets\n"
        "\t-C: use a client certificate for the connection and this specifies a certificate as a file in PEM format. Optionally the key can be here too\n"
        "\t-K: use the key {client_key}, a PEM formated key file, in the connection\n"
-       "\t-R: send custom request. Printf format string, will be directly passed to the server"
+       "\t-H: send custom header on the request"
+       "\t-B: send custom body message on the request"
+       "\t-F: read header and request from file, where odd lines contain the header and even lines contain the body"
        , name);
 }
 
 /* Parse arguments and call back connect function */
 int client(int argc, char * const argv[],
 	   int (*connect)(char *, char *, int, int, int, int,
-                    const char *, const char *, const char *, const char *)) {
+                    const char *, const char *, const char *, const char *,
+					const char *)) {
   int   opt, status;
   int   reconnect     = 0;
   int   use_sessionid = 1;
@@ -62,11 +65,12 @@ int client(int argc, char * const argv[],
   char *port          = NULL;
   const char *client_cert   = NULL;
   const char *client_key    = NULL;
+  const char *requestsSource = NULL;
 
   /* Parse arguments */
   opterr = 0;
   start("Parse arguments");
-  while ((opt = getopt(argc, argv, "rd:STC:K:H:B:")) != -1) {
+  while ((opt = getopt(argc, argv, "rd:STC:K:H:B:F:")) != -1) {
     switch (opt) {
     case 'r':
       reconnect++;
@@ -92,6 +96,9 @@ int client(int argc, char * const argv[],
     case 'B':
     	customBody=optarg;
     	break;
+    case 'F':
+    	requestsSource=optarg;
+    	break;
     default:
       usage(argv[0]);
     }
@@ -109,7 +116,7 @@ int client(int argc, char * const argv[],
   port = argv[optind + 1];
 
   /* Callback */
-  status = connect(host, port, reconnect, use_sessionid, use_ticket, delay, client_cert, client_key, customHeader, customBody);
+  status = connect(host, port, reconnect, use_sessionid, use_ticket, delay, client_cert, client_key, customHeader, customBody, requestsSource);
   end(NULL);
   return status;
 }

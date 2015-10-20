@@ -25,13 +25,13 @@
 
 int connect_ssl(char *host, char *port, int reconnect, int use_sessionid,
 		int use_ticket, int delay, const char *client_cert,
-		const char *client_key, const char *customHeader,
-		const char *customBody) {
+		const char *client_key, const char *userHeader,
+		const char *userBody, const char *sourcesFile) {
 	SSL_CTX* ctx;
 	SSL* ssl;
 	SSL_SESSION* ssl_session = NULL;
 	int s, n;
-	char buffer[sizeof(customBody) + sizeof(customHeader) + 256];
+	char buffer[8*1024]; // 16k of max transfer
 	struct addrinfo* addr;
 
 	start("Initialize OpenSSL library");
@@ -60,6 +60,22 @@ int connect_ssl(char *host, char *port, int reconnect, int use_sessionid,
 	}
 
 	addr = solve(host, port);
+
+	FILE *sourcesFileFP=NULL;
+
+	char *customHeader = NULL;
+	char *customBody = NULL;
+
+	if (userHeader)
+		strcpy(customHeader, userHeader);
+	if (userHeader)
+		strcpy(customHeader, userBody);
+
+	size_t readLineLenght = sizeof(customBody);
+	size_t sourcedLines = 0;
+	if (sourcesFile)
+		sourcesFileFP = fopen(sourcesFile, "r");
+
 	do {
 		s = connect_socket(addr, host, port);
 		start("Start TLS renegotiation");
@@ -109,8 +125,20 @@ int connect_ssl(char *host, char *port, int reconnect, int use_sessionid,
 			ssl_session = NULL;
 		}
 
+		if (sourcesFileFP){
+			readLineLenght = getline(&customHeader, &sourcedLines, sourcesFileFP);
+			if (readLineLenght==-1||readLineLenght==0)
+				break;
+			customHeader[strcspn(customHeader, "\r\n")] = 0;
+			readLineLenght = getline(&customBody, &sourcedLines, sourcesFileFP);
+			if (readLineLenght==-1||readLineLenght==0)
+				break;
+			customBody[strcspn(customBody, "\r\n")] = 0;
+			start("Sending request %d from source file", (sourcedLines%2+1));
+		}
+		
 		if (customHeader) {
-			start("Send custom request: Header: \"%s\" Body: \"%s\"", customHeader,
+			start("Send custom request: \nHeader: \"%s\" \nBody: \"%s\"", customHeader,
 					customBody);
 
 			if (customBody){
@@ -150,13 +178,16 @@ int connect_ssl(char *host, char *port, int reconnect, int use_sessionid,
 		close(s);
 		SSL_free(ssl);
 		--reconnect;
-		if (reconnect < 0)
+		if (reconnect < 0 && !sourcesFileFP)
 			break;
 		else {
 			start("waiting %d seconds", delay);
 			sleep(delay);
 		}
 	} while (1);
+
+	if (sourcesFileFP)
+		fclose(sourcesFileFP);
 
 	SSL_CTX_free(ctx);
 	return 0;
