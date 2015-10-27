@@ -43,9 +43,9 @@ usage(char * const name) {
        "\t-T: disable support for tickets\n"
        "\t-C: use a client certificate for the connection and this specifies a certificate as a file in PEM format. Optionally the key can be here too\n"
        "\t-K: use the key {client_key}, a PEM formated key file, in the connection\n"
-       "\t-H: send custom header on the request"
-       "\t-B: send custom body message on the request"
-       "\t-F: read header and request from file, where odd lines contain the header and even lines contain the body"
+       "\t-H: send custom header on the request\n"
+       "\t-B: send custom body message on the request\n"
+       "\t-F: read header and request from file, where odd lines contain the header and even lines contain the body\n"
        , name);
 }
 

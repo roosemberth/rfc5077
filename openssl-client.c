@@ -63,13 +63,14 @@ int connect_ssl(char *host, char *port, int reconnect, int use_sessionid,
 
 	FILE *sourcesFileFP=NULL;
 
-	char *customHeader = NULL;
-	char *customBody = NULL;
+	// FIXME: For custom body/header is a better idea to
+	char *customHeader = malloc(sizeof(char)*1024);
+	char *customBody = malloc(sizeof(char)*1024);
 
 	if (userHeader)
 		strcpy(customHeader, userHeader);
-	if (userHeader)
-		strcpy(customHeader, userBody);
+	if (userBody)
+		strcpy(customBody, userBody);
 
 	size_t readLineLenght = sizeof(customBody);
 	size_t sourcedLines = 0;
@@ -134,7 +135,7 @@ int connect_ssl(char *host, char *port, int reconnect, int use_sessionid,
 			if (readLineLenght==-1||readLineLenght==0)
 				break;
 			customBody[strcspn(customBody, "\r\n")] = 0;
-			start("Sending request %d from source file", (sourcedLines%2+1));
+			start("Sending request %d from source file", (int)(sourcedLines%2+1));
 		}
 		
 		if (customHeader) {
@@ -146,7 +147,7 @@ int connect_ssl(char *host, char *port, int reconnect, int use_sessionid,
 						"Host: %s\r\n"
 						"Content-Length: %d\r\n"
 						"\r\n"
-						"%s\r\n", customHeader, host, (sizeof(customBody) + 1), customBody);
+						"%s\r\n", customHeader, host, (int)(sizeof(customBody) + 1), customBody);
 			} else {
 			n = snprintf(buffer, sizeof(buffer), "%s\r\n"
 					"Host: %s\r\n"
