@@ -26,13 +26,19 @@
 #include "common.h"
 
 #define PORT "https"
-#define TRY  5
 #define UA   "Mozilla/5.0 (compatible; RFC5077-Checker/0.1; +https://github.com/vincentbernat/rfc5077)"
+
+static char *userHeader = NULL;
+static char *userBody = NULL;
+static char *requestsSourceFile = NULL;
+
+static int TRY = 5;
+static int delay = 0;
 
 /* Display usage and exit */
 static void
 usage(char * const name) {
-  fail("Usage: %s [-p {port}] [-s {sni name}] [-4] host [host ...]\n"
+  fail("Usage: %s [-p {port}] [-s {sni name}] [-4] [-H] [-B] [-F] [-d delay] host [host ...]\n"
        "\n"
        " Check if a host or a pool of hosts support RFC 5077."
        "\n"
@@ -40,6 +46,10 @@ usage(char * const name) {
        "\t-p: specify a port to connect to\n"
        "\t-s: specify an sni name\n"
        "\t-4: use only ipv4 addresses\n"
+       "\t-H: send custom header on the request\n"
+       "\t-B: send custom body message on the request\n"
+       "\t-F: read header and request from file, where odd lines contain the header and even lines contain the body\n"
+	   "\t-d: delay to wait before retransmission"
        , name);
 }
 
@@ -224,9 +234,36 @@ tests(SSL_CTX *ctx, const char *port, struct addrinfo *hosts, const char *sni_na
   SSL_SESSION*        ssl_session = NULL;
   int                 s, err, n;
   char                name[INET6_ADDRSTRLEN];
-  char                buffer[256];
+  char                buffer[16*1024];
   struct resultinfo  *results = NULL, *r;
   struct resultinfo **p;
+
+  char customRequests = 0;
+
+  FILE *sourcesFileFP=NULL;
+
+  // FIXME: For custom body/header is a better idea to
+  char *customHeader = NULL;
+  char *customBody = NULL;
+
+  if (userHeader){
+	  strcpy(customHeader, userHeader);
+	  customHeader = malloc(sizeof(char)*1024);
+  }
+  if (userBody){
+	  strcpy(customBody, userBody);
+	  customBody = malloc(sizeof(char)*1024);
+  }
+
+  size_t sourcedLines = 0;
+  if (requestsSourceFile){
+	sourcesFileFP = fopen(requestsSourceFile, "r");
+    customHeader = malloc(sizeof(char)*1024);
+    customBody = malloc(sizeof(char)*1024);
+	customRequests=1;
+	// We don't know how many times we'll do this, but at least one
+	TRY=1;
+  }
 
   p = &results;
 
@@ -246,7 +283,10 @@ tests(SSL_CTX *ctx, const char *port, struct addrinfo *hosts, const char *sni_na
       fail("Unable to format IP address:\n%s\n%m", gai_strerror(err));
     name[sizeof(name)] = '\0';
 
-    for (int try = 0; try < TRY; try++) {
+      start("Sending Requests");
+    for (int try = 0; (customRequests) || try < TRY; try++) {
+    	fprintf(stdout, " Processing request %7d\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b", try+1);
+    	fflush(stdout);
 
       /* Create socket and connect. */
       if ((s = socket(current->ai_family,
@@ -293,11 +333,43 @@ tests(SSL_CTX *ctx, const char *port, struct addrinfo *hosts, const char *sni_na
       *p = r;
       p = &r->next;
 
-      /* Send HTTP request */
-      n = snprintf(buffer, sizeof(buffer),
-		   "HEAD / HTTP/1.0\r\n"
-		   "User-Agent: " UA "\r\n"
-		   "\r\n");
+// TODO: Cleanup vvv
+
+		if (sourcesFileFP){
+			if (requestFromFile(sourcesFileFP, &sourcedLines, customHeader, customBody))
+					break;
+		}
+
+		if (customHeader) {
+//			end("Send custom request: \nHeader: \"%s\" \nBody: \"%s\"\n", customHeader,
+//					customBody);
+
+			if (customBody){
+				n = snprintf(buffer, sizeof(buffer), "%s\r\n"
+						"Host: %s\r\n"
+						"Content-Length: %d\r\n"
+						"\r\n"
+						"%s\r\n", customHeader, name, (int)(sizeof(customBody) + 1), customBody);
+			} else {
+			n = snprintf(buffer, sizeof(buffer), "%s\r\n"
+					"Host: %s\r\n"
+					"\r\n", customHeader, name);
+			}
+		} else {
+//			end("Send HTTP GET");
+			n = snprintf(buffer, sizeof(buffer), "GET / HTTP/1.0\r\n"
+					"Host: %s\r\n"
+					"\r\n", name);
+		}
+
+//      /* Send HTTP request */
+//      n = snprintf(buffer, sizeof(buffer),
+//		   "HEAD / HTTP/1.0\r\n"
+//		   "User-Agent: " UA "\r\n"
+//		   "\r\n");
+
+// TODO: Cleanup ^^^
+
       if (n == -1 || n >= sizeof(buffer))
 	fail("Unable to build request to send to ‘%s’", name);
       if (SSL_write(ssl, buffer, strlen(buffer)) != strlen(buffer))
@@ -317,6 +389,11 @@ tests(SSL_CTX *ctx, const char *port, struct addrinfo *hosts, const char *sni_na
       SSL_shutdown(ssl);
       close(s);
       SSL_free(ssl);
+      if (tickets && delay>0){
+    	  start("Waiting %d seconds...", delay);
+    	  sleep(delay);
+    	  end("Wait %d seconds", delay);
+      }
     }
   }
   return results;
@@ -332,7 +409,7 @@ main(int argc, char * const argv[]) {
   /* We need at least one host */
   start("Check arguments");
 
-  while ((opt = getopt(argc, argv, "s:p:4")) != -1) {
+  while ((opt = getopt(argc, argv, "s:p:4H:B:F:d:")) != -1) {
     switch (opt) {
     case 's':
       sni_name = optarg;
@@ -343,6 +420,18 @@ main(int argc, char * const argv[]) {
     case '4':
       ipv4only = 1;
       break;
+    case 'H':
+    	userHeader=optarg;
+    	break;
+    case 'B':
+    	userBody=optarg;
+    	break;
+    case 'F':
+    	requestsSourceFile=optarg;
+    	break;
+    case 'd':
+    	delay=atoi(optarg);
+    	break;
     default:
       usage(argv[0]);
     }
@@ -393,10 +482,10 @@ main(int argc, char * const argv[]) {
     fail("Unable to create output file ‘%s’:\n%m", name);
 
   /* Run tests */
-  results = tests(ctx, port, hosts, sni_name, 0);
-  resultinfo_display(results);
-  resultinfo_write("Without tickets", results, output, 1);
-  resultinfo_free(results);
+//  results = tests(ctx, port, hosts, sni_name, 0);
+//  resultinfo_display(results);
+//  resultinfo_write("Without tickets", results, output, 1);
+//  resultinfo_free(results);
 
   results = tests(ctx, port, hosts, sni_name, 1);
   resultinfo_display(results);

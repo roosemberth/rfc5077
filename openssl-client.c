@@ -26,12 +26,12 @@
 int connect_ssl(char *host, char *port, int reconnect, int use_sessionid,
 		int use_ticket, int delay, const char *client_cert,
 		const char *client_key, const char *userHeader,
-		const char *userBody, const char *sourcesFile) {
+		const char *userBody, const char *requestsSourceFile) {
 	SSL_CTX* ctx;
 	SSL* ssl;
 	SSL_SESSION* ssl_session = NULL;
 	int s, n;
-	char buffer[8*1024]; // 16k of max transfer
+	char buffer[16*1024]; // 16k of max transfer
 	struct addrinfo* addr;
 
 	start("Initialize OpenSSL library");
@@ -64,18 +64,25 @@ int connect_ssl(char *host, char *port, int reconnect, int use_sessionid,
 	FILE *sourcesFileFP=NULL;
 
 	// FIXME: For custom body/header is a better idea to
-	char *customHeader = malloc(sizeof(char)*1024);
-	char *customBody = malloc(sizeof(char)*1024);
+  char *customHeader = NULL;
+  char *customBody = NULL;
 
-	if (userHeader)
-		strcpy(customHeader, userHeader);
-	if (userBody)
-		strcpy(customBody, userBody);
+  if (userHeader){
+	  strcpy(customHeader, userHeader);
+	  customHeader = malloc(sizeof(char)*1024);
+  }
+  if (userBody){
+	  strcpy(customBody, userBody);
+	  customBody = malloc(sizeof(char)*1024);
+  }
 
-	size_t readLineLenght = sizeof(customBody);
-	size_t sourcedLines = 0;
-	if (sourcesFile)
-		sourcesFileFP = fopen(sourcesFile, "r");
+  size_t sourcedLines = 0;
+  if (requestsSourceFile){
+	sourcesFileFP = fopen(requestsSourceFile, "r");
+    customHeader = malloc(sizeof(char)*1024);
+    customBody = malloc(sizeof(char)*1024);
+  }
+
 
 	do {
 		s = connect_socket(addr, host, port);
@@ -127,14 +134,8 @@ int connect_ssl(char *host, char *port, int reconnect, int use_sessionid,
 		}
 
 		if (sourcesFileFP){
-			readLineLenght = getline(&customHeader, &sourcedLines, sourcesFileFP);
-			if (readLineLenght==-1||readLineLenght==0)
-				break;
-			customHeader[strcspn(customHeader, "\r\n")] = 0;
-			readLineLenght = getline(&customBody, &sourcedLines, sourcesFileFP);
-			if (readLineLenght==-1||readLineLenght==0)
-				break;
-			customBody[strcspn(customBody, "\r\n")] = 0;
+			if (requestFromFile(sourcesFileFP, &sourcedLines, customHeader, customBody))
+					break;
 			start("Sending request %d from source file", (int)(sourcedLines%2+1));
 		}
 		

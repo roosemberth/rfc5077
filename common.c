@@ -1,9 +1,10 @@
+#include <unistd.h>
 #include "common.h"
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <stdarg.h>
+#include <string.h>
 
 static char current[2048];
 static int running = 0;
@@ -89,4 +90,35 @@ warn(const char *format, ...) {
   va_start(ap, format);
   display(WARN, format, ap);
   va_end(ap);
+}
+
+int
+requestFromFile(FILE *fp, size_t *offset, char* headerBuff, char* bodyBuff){
+	if (fp==NULL)
+		return -1;
+	ssize_t readLineLenght = 0;
+
+	readLineLenght = getline(&headerBuff, offset, fp);
+//	end("--- %d Bytes readed from file: %s", (int)readLineLenght, headerBuff);
+	// EOF
+	if (readLineLenght==-1)
+		return 1;
+	// White line, start over
+	if (readLineLenght==0)
+		return requestFromFile(fp, offset, headerBuff, bodyBuff);
+
+	headerBuff[strcspn(headerBuff, "\r\n")] = 0;
+
+	readLineLenght = getline(&bodyBuff, offset, fp);
+//	end("--- %d Bytes readed from file: %s", (int)readLineLenght, bodyBuff);
+	// EOF
+	if (readLineLenght==-1)
+		return 1;
+	// White line, start over
+	if (readLineLenght==0)
+		return requestFromFile(fp, offset, headerBuff, bodyBuff);
+
+	bodyBuff[strcspn(bodyBuff, "\r\n")] = 0;
+	//start("Sending request %d from source file", (int)(sourcedLines%2+1));
+	return 0;
 }

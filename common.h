@@ -1,4 +1,6 @@
 #include <netdb.h>
+#include <stdio.h>
+#include <unistd.h>
 
 /* Client side */
 extern int
@@ -25,3 +27,7 @@ __attribute__ ((format (printf, 1, 2)));
 extern void
 warn(const char *, ...)
 __attribute__ ((format (printf, 1, 2)));
+
+extern int
+requestFromFile(FILE *, size_t *, char *, char *);
+
